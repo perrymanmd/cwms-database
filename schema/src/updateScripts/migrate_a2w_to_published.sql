@@ -299,10 +299,50 @@ select ora_err_mesg$, location_code, published_id, rating_spec_code
 --------------------------------------------------------------------------------
 -- 4. Review, then COMMIT or ROLLBACK
 --------------------------------------------------------------------------------
+set serveroutput on
+set verify off
+prompt The following tables exist and can be dropped as appropriate.
+prompt (If A2W_OPENING_OBJ_BACKUP has more than 0 rows, do not drop it until the object-sourced opening codes have a home in the new schema)
 prompt
-prompt ==== Nothing has been committed. ====
-prompt Review sections 1 and 3, then run COMMIT or ROLLBACK.
-prompt SQL*Plus commits on a normal EXIT, so ROLLBACK first if you want to discard.
+declare
+   l_count binary_integer;
+   l_table_names str_tab_t := str_tab_t(
+      'A2W_MIGRATION_SOURCE',
+      'A2W_OPENING_OBJ_BACKUP',
+      'ERR$_AT_A2W_ATTRIBUTES',
+      'ERR$_AT_PUBLISHED_TS',
+      'ERR$_AT_PUBLISHED_RATING');
+begin
+   for i in 1..l_table_names.count loop
+      execute immediate 'select count(*) from '||l_table_names(i) into l_count;
+      dbms_output.put_line(chr(9)||'Table '||l_table_names(i)||':'||chr(9)||l_count||' rows.');
+   end loop;
+end;
+/
+prompt
+prompt ==== Nothing has been committed yet. ====
+prompt
+accept response prompt 'Review sections 1 and 3, then enter Y to commit and continue or any other response to rollback. > ' 
+whenever sqlerror exit failure rollback
+declare
+    v_resp varchar2(8) := '&response';
+begin
+    if v_resp in ('y', 'Y') then
+        null;
+    else
+        rollback;
+        raise_application_error(-20001, 'Rolling back and exiting script');
+    end if;
+    commit;
+end;
+/
+commit;
+prompt Continuing...
+prompt
+delete from at_clob where id in ('/VIEWDOCS/AV_A2W_TS_CODES_BY_LOC', '/VIEWDOCS/AV_A2W_TS_CODES_BY_LOC2');
+@../cwms/views/av_a2w_ts_codes_by_loc
+@../cwms/views/av_a2w_ts_codes_by_loc2
+quit
 
 -- After COMMIT or ROLLBACK, the work table and error logs can be dropped
 -- (each DROP commits, so do not run these before deciding):
